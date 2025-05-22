@@ -1,0 +1,75 @@
+pipeline {
+  agent any
+
+  environment {
+    AWS_REGION      = 'us-east-1'
+    TF_VAR_region1  = 'us-east-1'
+    TF_VAR_region2  = 'us-west-2'
+    TF_VAR_key_name = 'your-ec2-keypair'
+    AWS_CREDS       = credentials('aws-credentials')
+  }
+
+  stages {
+    stage('Checkout Code') {
+      steps {
+        git url: 'https://github.com/your-org/terraform-dr-infra.git', branch: 'main'
+      }
+    }
+
+    stage('Terraform Init') {
+      steps {
+        sh 'terraform init'
+      }
+    }
+
+    stage('Terraform Format & Validate') {
+      steps {
+        sh '''
+          terraform fmt -check
+          terraform validate
+        '''
+      }
+    }
+
+    stage('Terraform Plan') {
+      steps {
+        sh 'terraform plan -out=tfplan'
+      }
+    }
+
+    stage('Terraform Apply') {
+      when {
+        branch 'main'
+      }
+      steps {
+        sh 'terraform apply -auto-approve tfplan'
+      }
+    }
+
+    stage('Verify Replication') {
+      steps {
+        echo 'Check S3 and RDS replication status via CloudWatch or custom script.'
+        // Optional shell/Python scripts for AWS CLI or CloudWatch metrics
+      }
+    }
+
+    stage('Trigger Failover (Mock/Manual)') {
+      when {
+        expression {
+          return false // Change to true or conditionally based on DR event
+        }
+      }
+      steps {
+        echo 'Route 53 failover switch would happen here using Terraform or AWS CLI'
+      }
+    }
+  }
+
+  post {
+    failure {
+      mail to: 'your@email.com',
+           subject: "Terraform Jenkins Build Failed",
+           body: "Check the logs at ${env.BUILD_URL}"
+    }
+  }
+}
